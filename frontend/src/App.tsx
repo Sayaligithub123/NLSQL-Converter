@@ -12,6 +12,8 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ConnectDatabasePage } from './pages/ConnectDatabasePage';
 import { SchemaIndexingPlaceholderPage } from './pages/SchemaIndexingPlaceholderPage';
+import { AssistantPage } from './pages/AssistantPage';
+import { QueryHistoryPage } from './pages/QueryHistoryPage';
 
 export function App() {
   return (
@@ -40,6 +42,34 @@ export function App() {
             element={
               <ProtectedRoute>
                 <ConnectDatabasePage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* AI Assistant — with optional connectionId param */}
+          <Route
+            path="/assistant"
+            element={
+              <ProtectedRoute>
+                <AssistantPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assistant/:connectionId"
+            element={
+              <ProtectedRoute>
+                <AssistantPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Query History */}
+          <Route
+            path="/history"
+            element={
+              <ProtectedRoute>
+                <QueryHistoryPage />
               </ProtectedRoute>
             }
           />

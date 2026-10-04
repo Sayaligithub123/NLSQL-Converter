@@ -7,6 +7,7 @@ from app.config import settings
 from app.database import init_db, close_db, get_db
 from app.routers.auth import router as auth_router
 from app.routers.databases import router as databases_router
+from app.routers.chat import router as chat_router
 from app.utils.security import get_password_hash
 
 # Configure logging
@@ -43,6 +44,10 @@ def auto_seed_demo_account(db):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}...")
+    if settings.GEMINI_API_KEY:
+        logger.info("✅ Gemini API key loaded.")
+    else:
+        logger.warning("⚠️  GEMINI_API_KEY is not set — chatbot will not work!")
     db = init_db()
     auto_seed_demo_account(db)
     yield
@@ -53,7 +58,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Backend API for NL2SQL Converter with MongoDB Authentication and Management",
+    description="Backend API for NL2SQL Converter with MongoDB Authentication and AI Chatbot",
     lifespan=lifespan,
 )
 
@@ -70,6 +75,7 @@ app.add_middleware(
 # Include API Routers
 app.include_router(auth_router, prefix=settings.API_PREFIX)
 app.include_router(databases_router, prefix=settings.API_PREFIX)
+app.include_router(chat_router, prefix=settings.API_PREFIX)
 
 
 @app.get("/api/health")
@@ -78,4 +84,5 @@ async def health_check():
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
+        "gemini_configured": bool(settings.GEMINI_API_KEY),
     }

@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -14,20 +13,44 @@ import { ConnectDatabasePage } from './pages/ConnectDatabasePage';
 import { SchemaIndexingPlaceholderPage } from './pages/SchemaIndexingPlaceholderPage';
 import { AssistantPage } from './pages/AssistantPage';
 import { QueryHistoryPage } from './pages/QueryHistoryPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 export function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+
           {/* ── Public Auth Routes ─────────────────────────────────── */}
-          <Route path="/"                element={<LoginPage />} />
-          <Route path="/login"           element={<LoginPage />} />
-          <Route path="/register"        element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password"  element={<ForgotPasswordPage />} />
+          <Route
+            path="/"
+            element={<LoginPage />}
+          />
+
+          <Route
+            path="/login"
+            element={<LoginPage />}
+          />
+
+          <Route
+            path="/register"
+            element={<RegisterPage />}
+          />
+
+          <Route
+            path="/forgot-password"
+            element={<ForgotPasswordPage />}
+          />
+
+          <Route
+            path="/reset-password"
+            element={<ForgotPasswordPage />}
+          />
+
 
           {/* ── Protected App Routes ───────────────────────────────── */}
+
+          {/* Dashboard */}
           <Route
             path="/dashboard"
             element={
@@ -37,6 +60,7 @@ export function App() {
             }
           />
 
+          {/* Databases */}
           <Route
             path="/databases"
             element={
@@ -46,7 +70,7 @@ export function App() {
             }
           />
 
-          {/* AI Assistant — with optional connectionId param */}
+          {/* AI Assistant */}
           <Route
             path="/assistant"
             element={
@@ -55,6 +79,7 @@ export function App() {
               </ProtectedRoute>
             }
           />
+
           <Route
             path="/assistant/:connectionId"
             element={
@@ -74,7 +99,7 @@ export function App() {
             }
           />
 
-          {/* Schema indexing placeholder — receives connection_id from connect flow */}
+          {/* Schema Indexing */}
           <Route
             path="/schema-indexing/:connectionId"
             element={
@@ -84,8 +109,31 @@ export function App() {
             }
           />
 
+          {/* Settings & Profile */}
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+
           {/* Fallback */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route
+            path="*"
+            element={<Navigate to="/login" replace />}
+          />
+
         </Routes>
       </AuthProvider>
     </BrowserRouter>

@@ -8,6 +8,7 @@ from app.database import init_db, close_db, get_db
 from app.routers.auth import router as auth_router
 from app.routers.databases import router as databases_router
 from app.routers.chat import router as chat_router
+from app.routers.api_keys import router as api_keys_router
 from app.utils.security import get_password_hash
 
 # Configure logging
@@ -76,6 +77,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix=settings.API_PREFIX)
 app.include_router(databases_router, prefix=settings.API_PREFIX)
 app.include_router(chat_router, prefix=settings.API_PREFIX)
+app.include_router(api_keys_router, prefix=settings.API_PREFIX)
 
 
 @app.get("/api/health")

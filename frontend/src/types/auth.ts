@@ -43,3 +43,34 @@ export interface DbStatusResponse {
   database: string;
   error?: string | null;
 }
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  created_at: string;
+  last_used_at?: string | null;
+  is_active: boolean;
+}
+
+export interface ApiKeyCreatedResponse extends ApiKey {
+  api_key: string;
+  message?: string;
+}
+
+export interface UpdateProfilePayload {
+  full_name?: string;
+  role?: UserRole | string;
+}
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+}
+
+export interface UserPreferences {
+  emailNotifications: boolean;
+  queryHistory: boolean;
+  darkMode: boolean;
+}
+

@@ -80,23 +80,27 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         {/* User card */}
         <div className="p-4 border-t border-slate-800/80">
           <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/50 hover:bg-slate-800 transition-colors">
-            <div className="flex items-center space-x-3 overflow-hidden">
-              <div className="w-9 h-9 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-sm">
+            <Link
+              to="/settings"
+              className="flex items-center space-x-3 overflow-hidden flex-1 group"
+              title="Manage Settings & Profile"
+            >
+              <div className="w-9 h-9 rounded-full bg-blue-600 group-hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-sm transition-colors">
                 {user?.full_name ? getInitials(user.full_name) : 'JD'}
               </div>
               <div className="overflow-hidden">
-                <p className="text-sm font-semibold text-white truncate leading-tight">
+                <p className="text-sm font-semibold text-white truncate leading-tight group-hover:text-blue-300 transition-colors">
                   {user?.full_name || 'John Doe'}
                 </p>
                 <p className="text-[11px] text-slate-400 capitalize truncate">
                   {user?.role || 'Manager'}
                 </p>
               </div>
-            </div>
+            </Link>
             <button
               onClick={handleLogout}
               title="Sign Out"
-              className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg transition-colors cursor-pointer ml-1"
             >
               <LogOut className="w-4 h-4" />
             </button>

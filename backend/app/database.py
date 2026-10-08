@@ -67,12 +67,17 @@ def init_db():
             logger.error(f"❌ Failed to initialize fallback mongomock: {mock_exc}")
             raise
 
-    # Ensure indexes on users collection
+    # Ensure indexes on users and api_keys collections
     try:
         users_col = _database["users"]
         users_col.create_index([("email", ASCENDING)], unique=True)
         users_col.create_index([("created_at", ASCENDING)])
         logger.info("✅ Database indexes ensured on 'users' collection")
+
+        api_keys_col = _database["api_keys"]
+        api_keys_col.create_index([("user_id", ASCENDING)])
+        api_keys_col.create_index([("key_hash", ASCENDING)])
+        logger.info("✅ Database indexes ensured on 'api_keys' collection")
     except Exception as e:
         logger.warning(f"Could not create indexes: {e}")
 

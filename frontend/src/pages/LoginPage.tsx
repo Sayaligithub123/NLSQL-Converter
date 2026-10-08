@@ -10,7 +10,6 @@ import {
   EyeOff,
   AlertCircle,
   Loader2,
-  Sparkles,
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
@@ -68,12 +67,6 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleFillDemo = () => {
-    setEmail('john@company.com');
-    setPassword('password123');
-    setErrorMessage(null);
-  };
-
   return (
     <div className="min-h-screen w-full flex bg-slate-50">
       {/* Left Pane: Branding & Graphics (Screen 1 Design) */}
@@ -129,23 +122,6 @@ export const LoginPage: React.FC = () => {
             </div>
           )}
 
-          {/* Quick Demo Credentials Banner */}
-          <div className="mb-6 p-3 bg-blue-50/70 border border-blue-100 rounded-xl flex items-center justify-between text-xs">
-            <div className="flex items-center space-x-2 text-slate-700">
-              <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0" />
-              <span>
-                Demo Account: <strong className="text-blue-900">john@company.com</strong>
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleFillDemo}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-white px-2.5 py-1 rounded-md shadow-xs border border-blue-200 transition-colors"
-            >
-              Fill Demo
-            </button>
-          </div>
-
           {/* Error Alert */}
           {errorMessage && (
             <div className="mb-5 p-3.5 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl flex items-start space-x-2.5 animate-fadeIn">
@@ -183,7 +159,7 @@ export const LoginPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="john@company.com"
+                  placeholder="name@company.com"
                   autoComplete="email"
                   className="block w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition-colors"
                 />

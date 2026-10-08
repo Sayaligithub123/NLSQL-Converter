@@ -4,12 +4,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.database import init_db, close_db, get_db
+from app.database import init_db, close_db
 from app.routers.auth import router as auth_router
 from app.routers.databases import router as databases_router
 from app.routers.chat import router as chat_router
 from app.routers.api_keys import router as api_keys_router
-from app.utils.security import get_password_hash
 
 # Configure logging
 logging.basicConfig(
@@ -19,29 +18,6 @@ logging.basicConfig(
 logger = logging.getLogger("nlsql.main")
 
 
-def auto_seed_demo_account(db):
-    try:
-        users = db["users"]
-        email = "john@company.com"
-        if not users.find_one({"email": email}):
-            from datetime import datetime, timezone
-            now = datetime.now(timezone.utc)
-            users.insert_one({
-                "email": email,
-                "password_hash": get_password_hash("password123"),
-                "full_name": "John Doe",
-                "role": "manager",
-                "is_active": True,
-                "avatar_url": None,
-                "created_at": now,
-                "updated_at": now,
-                "last_login_at": now,
-            })
-            logger.info("⚡ Seeded initial demo user: john@company.com / password123")
-    except Exception as e:
-        logger.warning(f"Could not auto-seed demo user: {e}")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}...")
@@ -49,8 +25,7 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Gemini API key loaded.")
     else:
         logger.warning("⚠️  GEMINI_API_KEY is not set — chatbot will not work!")
-    db = init_db()
-    auto_seed_demo_account(db)
+    init_db()
     yield
     logger.info("Shutting down application...")
     close_db()

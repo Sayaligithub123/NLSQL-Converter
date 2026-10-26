@@ -5,25 +5,15 @@ import type { DBConnectionPayload } from '../../services/databaseApi';
 import { ConnectionStatus } from './ConnectionStatus';
 import type { ConnectionStatusType } from './ConnectionStatus';
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '../../context/LanguageContext';
 
 // ── Field error type ──────────────────────────────────────────────────────────
 type FieldErrors = Partial<Record<keyof Omit<DBConnectionPayload, 'db_type'>, string>>;
 
-// ── Validation ────────────────────────────────────────────────────────────────
-function validate(form: DBConnectionPayload): FieldErrors {
-  const errors: FieldErrors = {};
-  if (!form.host.trim()) errors.host = 'Host is required.';
-  if (!form.port || isNaN(form.port) || form.port < 1 || form.port > 65535)
-    errors.port = 'Port must be a valid number (1–65535).';
-  if (!form.database.trim()) errors.database = 'Database name is required.';
-  if (!form.username.trim()) errors.username = 'Username is required.';
-  if (!form.password) errors.password = 'Password is required.';
-  return errors;
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 export const DatabaseConnectionForm: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const [form, setForm] = useState<DBConnectionPayload>({
     db_type: 'mysql',
@@ -43,6 +33,18 @@ export const DatabaseConnectionForm: React.FC = () => {
 
   const busy = isTesting || isConnecting;
 
+  // Validation using current language strings
+  const validateForm = (data: DBConnectionPayload): FieldErrors => {
+    const errors: FieldErrors = {};
+    if (!data.host.trim()) errors.host = t.connectDb.errors.hostRequired;
+    if (!data.port || isNaN(data.port) || data.port < 1 || data.port > 65535)
+      errors.port = t.connectDb.errors.portInvalid;
+    if (!data.database.trim()) errors.database = t.connectDb.errors.databaseRequired;
+    if (!data.username.trim()) errors.username = t.connectDb.errors.usernameRequired;
+    if (!data.password) errors.password = t.connectDb.errors.passwordRequired;
+    return errors;
+  };
+
   // ── Helpers ─────────────────────────────────────────────────────────────────
   const update = (key: keyof DBConnectionPayload, value: string | number) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -53,7 +55,7 @@ export const DatabaseConnectionForm: React.FC = () => {
   };
 
   const runValidation = (): boolean => {
-    const errors = validate(form);
+    const errors = validateForm(form);
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -71,11 +73,11 @@ export const DatabaseConnectionForm: React.FC = () => {
       const result = await testDatabaseConnection(form);
       setConnStatus(result.success ? 'success' : 'error');
       setStatusMessage(result.message);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setConnStatus('error');
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setStatusMessage(
-        err.response?.data?.detail ||
-          'Failed to reach the backend server. Is it running?'
+        detail || t.connectDb.errors.failedBackend
       );
     } finally {
       setIsTesting(false);
@@ -89,25 +91,25 @@ export const DatabaseConnectionForm: React.FC = () => {
 
     setIsConnecting(true);
     setConnStatus('testing');
-    setStatusMessage('Verifying and saving connection…');
+    setStatusMessage(t.connectDb.errors.savingStatus);
 
     try {
       const result = await connectDatabase(form);
       if (result.success && result.connection_id) {
         setConnStatus('success');
-        setStatusMessage('Connection saved! Redirecting to schema indexing…');
+        setStatusMessage(t.connectDb.errors.savedSuccess);
         setTimeout(() => navigate(`/schema-indexing/${result.connection_id}`), 1200);
       } else {
         setConnStatus('error');
-        setStatusMessage(result.message || 'Could not save the connection.');
+        setStatusMessage(result.message || t.connectDb.errors.couldNotSave);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setConnStatus('error');
-      const detail = err.response?.data?.detail;
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setStatusMessage(
         typeof detail === 'string'
           ? detail
-          : 'Connection could not be saved. Please check your credentials.'
+          : t.connectDb.errors.couldNotSave
       );
     } finally {
       setIsConnecting(false);
@@ -116,25 +118,25 @@ export const DatabaseConnectionForm: React.FC = () => {
 
   // ── Shared input class ───────────────────────────────────────────────────────
   const inputCls = (hasError: boolean) =>
-    `block w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm placeholder-slate-400 text-slate-900
+    `block w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-sm placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-slate-100
      focus:outline-none focus:ring-2 transition-colors
      ${hasError
-       ? 'border-red-400 focus:ring-red-500 focus:border-red-500'
-       : 'border-slate-300 focus:ring-blue-600 focus:border-blue-600'
+       ? 'border-red-400 dark:border-red-500 focus:ring-red-500 focus:border-red-500'
+       : 'border-slate-300 dark:border-slate-700 focus:ring-blue-600 focus:border-blue-600'
      }`;
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm w-full max-w-xl mx-auto">
+    <div className="bg-app-surface rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm w-full max-w-xl mx-auto transition-colors">
       {/* Card Header */}
-      <div className="px-7 pt-7 pb-5 border-b border-slate-100">
+      <div className="px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-center space-x-3 mb-1">
           <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0 shadow-md shadow-blue-500/20">
             <Server className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-900">Connect New Database</h2>
-            <p className="text-xs text-slate-500">Enter your database connection details</p>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">{t.connectDb.cardTitle}</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{t.connectDb.cardSubtitle}</p>
           </div>
         </div>
       </div>
@@ -144,8 +146,8 @@ export const DatabaseConnectionForm: React.FC = () => {
 
         {/* ── Database Type ── */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-            Database Type
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            {t.connectDb.dbTypeLabel}
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -155,9 +157,9 @@ export const DatabaseConnectionForm: React.FC = () => {
               value={form.db_type}
               onChange={(e) => update('db_type', e.target.value)}
               disabled={busy}
-              className="block w-full pl-10 pr-8 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900
+              className="block w-full pl-10 pr-8 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100
                          focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition-colors
-                         disabled:opacity-60"
+                         disabled:opacity-60 cursor-pointer"
             >
               <option value="mysql">MySQL</option>
             </select>
@@ -168,89 +170,89 @@ export const DatabaseConnectionForm: React.FC = () => {
         <div className="grid grid-cols-3 gap-3">
           {/* Host */}
           <div className="col-span-2">
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-              Host
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+              {t.connectDb.hostLabel}
             </label>
             <input
               type="text"
               value={form.host}
               onChange={(e) => update('host', e.target.value)}
-              placeholder="localhost"
+              placeholder={t.connectDb.hostPlaceholder}
               disabled={busy}
               className={inputCls(!!fieldErrors.host) + ' disabled:opacity-60'}
             />
             {fieldErrors.host && (
-              <p className="mt-1 text-xs text-red-600">{fieldErrors.host}</p>
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.host}</p>
             )}
           </div>
 
           {/* Port */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-              Port
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+              {t.connectDb.portLabel}
             </label>
             <input
               type="number"
               value={form.port}
               onChange={(e) => update('port', parseInt(e.target.value, 10) || 0)}
-              placeholder="3306"
+              placeholder={t.connectDb.portPlaceholder}
               disabled={busy}
               className={inputCls(!!fieldErrors.port) + ' disabled:opacity-60'}
             />
             {fieldErrors.port && (
-              <p className="mt-1 text-xs text-red-600">{fieldErrors.port}</p>
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.port}</p>
             )}
           </div>
         </div>
 
         {/* ── Database Name ── */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-            Database Name
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            {t.connectDb.dbNameLabel}
           </label>
           <input
             type="text"
             value={form.database}
             onChange={(e) => update('database', e.target.value)}
-            placeholder="company_db"
+            placeholder={t.connectDb.dbNamePlaceholder}
             disabled={busy}
             className={inputCls(!!fieldErrors.database) + ' disabled:opacity-60'}
           />
           {fieldErrors.database && (
-            <p className="mt-1 text-xs text-red-600">{fieldErrors.database}</p>
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.database}</p>
           )}
         </div>
 
         {/* ── Username ── */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-            Username
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            {t.connectDb.usernameLabel}
           </label>
           <input
             type="text"
             value={form.username}
             onChange={(e) => update('username', e.target.value)}
-            placeholder="readonly_user"
+            placeholder={t.connectDb.usernamePlaceholder}
             autoComplete="off"
             disabled={busy}
             className={inputCls(!!fieldErrors.username) + ' disabled:opacity-60'}
           />
           {fieldErrors.username && (
-            <p className="mt-1 text-xs text-red-600">{fieldErrors.username}</p>
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.username}</p>
           )}
         </div>
 
         {/* ── Password ── */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-            Password
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            {t.connectDb.passwordLabel}
           </label>
           <div className="relative">
             <input
               type={showPassword ? 'text' : 'password'}
               value={form.password}
               onChange={(e) => update('password', e.target.value)}
-              placeholder="••••••••"
+              placeholder={t.connectDb.passwordPlaceholder}
               autoComplete="new-password"
               disabled={busy}
               className={inputCls(!!fieldErrors.password) + ' pr-10 disabled:opacity-60'}
@@ -258,14 +260,14 @@ export const DatabaseConnectionForm: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none cursor-pointer"
               tabIndex={-1}
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
           {fieldErrors.password && (
-            <p className="mt-1 text-xs text-red-600">{fieldErrors.password}</p>
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.password}</p>
           )}
         </div>
 
@@ -276,17 +278,17 @@ export const DatabaseConnectionForm: React.FC = () => {
             type="button"
             onClick={handleTest}
             disabled={busy}
-            className="flex-1 py-2.5 px-4 border border-slate-300 bg-white hover:bg-slate-50 active:bg-slate-100
-                       text-slate-700 font-semibold text-sm rounded-xl shadow-xs transition-all
+            className="flex-1 py-2.5 px-4 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 active:bg-slate-100
+                       text-slate-700 dark:text-slate-200 font-semibold text-sm rounded-xl shadow-xs transition-all
                        flex items-center justify-center space-x-2 disabled:opacity-60 cursor-pointer"
           >
             {isTesting ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Testing…</span>
+                <span>{t.connectDb.testingBtn}</span>
               </>
             ) : (
-              <span>Test Connection</span>
+              <span>{t.connectDb.testBtn}</span>
             )}
           </button>
 
@@ -302,10 +304,10 @@ export const DatabaseConnectionForm: React.FC = () => {
             {isConnecting ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Connecting…</span>
+                <span>{t.connectDb.connectingBtn}</span>
               </>
             ) : (
-              <span>Connect & Save</span>
+              <span>{t.connectDb.connectSaveBtn}</span>
             )}
           </button>
         </div>

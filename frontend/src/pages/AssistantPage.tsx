@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppLayout } from '../components/AppLayout';
+import { useLanguage } from '../context/LanguageContext';
 import { getUserConnections, type DatabaseConnection } from '../services/databaseApi';
 import { sendChatMessage, getConnectionSchema } from '../services/chatApi';
 import type { ChatBubble, SchemaResponse, ChatMessage } from '../types/chat';
@@ -24,6 +25,7 @@ function formatMs(ms?: number) {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 const SQLBlock: React.FC<{ sql: string }> = ({ sql }) => {
+  const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
     navigator.clipboard.writeText(sql);
@@ -33,13 +35,13 @@ const SQLBlock: React.FC<{ sql: string }> = ({ sql }) => {
   return (
     <div className="mt-3 rounded-xl overflow-hidden border border-slate-700/60">
       <div className="flex items-center justify-between bg-slate-800 px-4 py-2">
-        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Generated SQL</span>
+        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">{t.assistant.generatedSql}</span>
         <button
           onClick={handleCopy}
           className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-white transition-colors cursor-pointer"
         >
           {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-          {copied ? 'Copied!' : 'Copy'}
+          {copied ? t.assistant.copied : t.assistant.copy}
         </button>
       </div>
       <pre className="bg-slate-900 px-4 py-3 text-xs text-emerald-300 font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">
@@ -50,6 +52,7 @@ const SQLBlock: React.FC<{ sql: string }> = ({ sql }) => {
 };
 
 const ResultTable: React.FC<{ columns: string[]; rows: (string | number | null)[][] }> = ({ columns, rows }) => {
+  const { t } = useLanguage();
   if (!columns.length) return null;
   return (
     <div className="mt-3 rounded-xl overflow-hidden border border-slate-700/40">
@@ -78,26 +81,29 @@ const ResultTable: React.FC<{ columns: string[]; rows: (string | number | null)[
         </table>
       </div>
       {rows.length === 0 && (
-        <div className="bg-slate-900/60 text-center py-6 text-xs text-slate-500">No rows returned</div>
+        <div className="bg-slate-900/60 text-center py-6 text-xs text-slate-500">{t.assistant.noRowsReturned}</div>
       )}
     </div>
   );
 };
 
 const BubbleAssistant: React.FC<{ bubble: ChatBubble }> = ({ bubble }) => {
+  const { t } = useLanguage();
   if (bubble.loading) {
     return (
       <div className="flex items-start gap-3 max-w-3xl">
         <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/20">
           <Bot className="w-4 h-4 text-white" />
         </div>
-        <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl rounded-tl-sm px-5 py-4 flex items-center gap-3">
+        <div className="bg-app-muted border border-app-border rounded-2xl rounded-tl-sm px-5 py-4 flex items-center gap-3">
           <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-          <span className="text-sm text-slate-400">Thinking…</span>
+          <span className="text-sm text-slate-400">{t.assistant.thinking}</span>
         </div>
       </div>
     );
   }
+
+  const rowsText = t.assistant.rowsCount.replace('{count}', (bubble.row_count || 0).toString());
 
   return (
     <div className="flex items-start gap-3 max-w-4xl w-full">
@@ -105,7 +111,7 @@ const BubbleAssistant: React.FC<{ bubble: ChatBubble }> = ({ bubble }) => {
         <Bot className="w-4 h-4 text-white" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl rounded-tl-sm px-5 py-4">
+        <div className="bg-app-muted border border-app-border rounded-2xl rounded-tl-sm px-5 py-4">
           {bubble.cannot_convert ? (
             <div className="flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -125,12 +131,12 @@ const BubbleAssistant: React.FC<{ bubble: ChatBubble }> = ({ bubble }) => {
               <div className="flex items-center gap-3 flex-wrap">
                 {bubble.error ? (
                   <span className="inline-flex items-center gap-1.5 text-xs text-red-400">
-                    <AlertCircle className="w-3.5 h-3.5" /> Execution failed
+                    <AlertCircle className="w-3.5 h-3.5" /> {t.common.error}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    {bubble.row_count} {bubble.row_count === 1 ? 'row' : 'rows'} returned
+                    {rowsText}
                   </span>
                 )}
                 {bubble.execution_time_ms !== undefined && (
@@ -185,22 +191,23 @@ const BubbleUser: React.FC<{ bubble: ChatBubble }> = ({ bubble }) => (
 // ── Schema Panel ──────────────────────────────────────────────────────────────
 
 const SchemaPanel: React.FC<{ schema: SchemaResponse | null; loading: boolean }> = ({ schema, loading }) => {
+  const { t } = useLanguage();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const toggle = (t: string) => setExpanded(prev => {
+  const toggle = (tName: string) => setExpanded(prev => {
     const next = new Set(prev);
-    next.has(t) ? next.delete(t) : next.add(t);
+    next.has(tName) ? next.delete(tName) : next.add(tName);
     return next;
   });
 
   if (loading) return (
     <div className="flex items-center justify-center h-full text-slate-500 text-xs gap-2">
-      <Loader2 className="w-4 h-4 animate-spin" /> Loading schema…
+      <Loader2 className="w-4 h-4 animate-spin" /> {t.common.loading}
     </div>
   );
   if (!schema) return (
     <div className="flex flex-col items-center justify-center h-full text-slate-500 text-xs text-center px-4 gap-2">
       <Table2 className="w-8 h-8 opacity-30" />
-      <p>Enter your DB password and select a connection to view the schema.</p>
+      <p>{t.assistant.enterPwPrompt}</p>
     </div>
   );
   if (!schema.success) return (
@@ -210,10 +217,12 @@ const SchemaPanel: React.FC<{ schema: SchemaResponse | null; loading: boolean }>
   );
 
   const tableNames = Object.keys(schema.tables);
+  const tableSummary = t.assistant.tablesCount.replace('{count}', tableNames.length.toString()) + ` · ${schema.database}`;
+
   return (
     <div className="overflow-y-auto flex-1 px-2 py-2">
       <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest px-2 mb-2">
-        {tableNames.length} tables · {schema.database}
+        {tableSummary}
       </p>
       {tableNames.map(tname => (
         <div key={tname} className="mb-1">
@@ -252,6 +261,7 @@ const SchemaPanel: React.FC<{ schema: SchemaResponse | null; loading: boolean }>
 export const AssistantPage: React.FC = () => {
   const { connectionId: paramConnectionId } = useParams<{ connectionId?: string }>();
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   // Connections
   const [connections, setConnections] = useState<DatabaseConnection[]>([]);
@@ -294,22 +304,23 @@ export const AssistantPage: React.FC = () => {
     try {
       const s = await getConnectionSchema(connId, pass);
       setSchema(s);
-    } catch (e) {
-      setSchema({ success: false, database: '', tables: {}, error: 'Failed to fetch schema.' });
+    } catch {
+      setSchema({ success: false, database: '', tables: {}, error: t.connectDb.errors.failedBackend });
     } finally {
       setSchemaLoading(false);
     }
-  }, []);
+  }, [t.connectDb.errors.failedBackend]);
 
   const handleConfirmPassword = () => {
     if (!dbPassword || !selectedConnId) return;
     setPasswordConfirmed(true);
     loadSchema(selectedConnId, dbPassword);
     // Welcome message
+    const welcomeMsg = `Connected to **${selectedConn?.database}**. Ask me anything about your data in plain English!`;
     setBubbles([{
       id: generateId(),
       role: 'system',
-      content: `Connected to **${selectedConn?.database}**. Ask me anything about your data in plain English!`,
+      content: welcomeMsg,
       timestamp: new Date(),
     }]);
   };
@@ -411,36 +422,31 @@ export const AssistantPage: React.FC = () => {
     }
   };
 
-  const suggestions = [
-    'Show all tables in this database',
-    'How many records are in each table?',
-    'Show the first 10 rows of the largest table',
-    'List all columns and their types',
-  ];
+  const suggestions = t.assistant.suggestions;
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <AppLayout>
-      <div className="flex h-screen overflow-hidden bg-slate-950">
+      <div className="flex h-screen overflow-hidden bg-app-bg">
 
         {/* ── LEFT: Schema Sidebar ──────────────────────────────────────────── */}
-        <aside className="w-72 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col">
+        <aside className="w-72 flex-shrink-0 bg-app-surface border-r border-app-border flex flex-col">
           {/* Header */}
-          <div className="h-14 flex items-center px-4 border-b border-slate-800 gap-2">
+          <div className="h-14 flex items-center px-4 border-b border-app-border gap-2">
             <Database className="w-4 h-4 text-blue-400" />
-            <span className="text-sm font-bold text-white">Database Schema</span>
+            <span className="text-sm font-bold text-app-text">{t.assistant.schemaTitle}</span>
           </div>
 
           {/* Connection Selector */}
-          <div className="p-3 border-b border-slate-800 space-y-2">
-            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest block">Connection</label>
+          <div className="p-3 border-b border-app-border space-y-2">
+            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest block">{t.assistant.connectionLabel}</label>
             <select
               value={selectedConnId}
               onChange={e => handleConnectionChange(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 cursor-pointer"
+              className="w-full bg-app-input border border-app-border text-app-text text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 cursor-pointer"
             >
-              <option value="">— Select a database —</option>
+              <option value="">{t.assistant.selectDbPlaceholder}</option>
               {connections.map(c => (
                 <option key={c.id} value={c.id}>
                   {c.database} ({c.host}:{c.port})
@@ -452,7 +458,7 @@ export const AssistantPage: React.FC = () => {
             {selectedConnId && !passwordConfirmed && (
               <div className="space-y-2">
                 <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest block">
-                  <Lock className="w-3 h-3 inline mr-1" />DB Password (session only)
+                  <Lock className="w-3 h-3 inline mr-1" />{t.assistant.dbPasswordPrompt}
                 </label>
                 <div className="relative">
                   <input
@@ -460,8 +466,8 @@ export const AssistantPage: React.FC = () => {
                     value={dbPassword}
                     onChange={e => setDbPassword(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleConfirmPassword()}
-                    placeholder="Enter DB password…"
-                    className="w-full bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-lg px-3 py-2 pr-8 focus:outline-none focus:border-blue-500"
+                    placeholder={t.assistant.dbPasswordPlaceholder}
+                    className="w-full bg-app-input border border-app-border text-app-text text-xs rounded-lg px-3 py-2 pr-8 focus:outline-none focus:border-blue-500"
                   />
                   <button
                     type="button"
@@ -476,7 +482,7 @@ export const AssistantPage: React.FC = () => {
                   disabled={!dbPassword}
                   className="w-full py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
                 >
-                  Connect & Load Schema
+                  {t.assistant.connectBtn}
                 </button>
                 <p className="text-[9px] text-slate-600 text-center">
                   <Info className="w-3 h-3 inline mr-1" />Password is held in memory only — never stored.
@@ -487,7 +493,7 @@ export const AssistantPage: React.FC = () => {
             {selectedConnId && passwordConfirmed && (
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Connected
+                  <CheckCircle2 className="w-3 h-3" /> {t.common.connected}
                 </span>
                 <button
                   onClick={handleReset}
@@ -509,17 +515,17 @@ export const AssistantPage: React.FC = () => {
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
           {/* Chat Header */}
-          <header className="h-14 flex items-center justify-between px-6 border-b border-slate-800 bg-slate-900 flex-shrink-0">
+          <header className="h-14 flex items-center justify-between px-6 border-b border-app-border bg-app-surface flex-shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
                 <Sparkles className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h1 className="text-sm font-bold text-white leading-tight">NL2SQL AI Assistant</h1>
+                <h1 className="text-sm font-bold text-app-text leading-tight">{t.assistant.mainTitle}</h1>
                 <p className="text-[10px] text-slate-500">
                   {selectedConn
                     ? `${selectedConn.database} · ${selectedConn.host}`
-                    : 'Select a database connection to begin'}
+                    : t.assistant.pickDbPrompt}
                 </p>
               </div>
             </div>
@@ -527,7 +533,7 @@ export const AssistantPage: React.FC = () => {
               {passwordConfirmed && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold bg-emerald-900/30 text-emerald-400 border border-emerald-800/40">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Live
+                  {t.assistant.liveBadge}
                 </span>
               )}
             </div>
@@ -540,24 +546,24 @@ export const AssistantPage: React.FC = () => {
                 <div className="w-16 h-16 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center mb-5 shadow-xl shadow-blue-500/5">
                   <Bot className="w-8 h-8 text-blue-400" />
                 </div>
-                <h2 className="text-xl font-bold text-white mb-2">AI Database Assistant</h2>
+                <h2 className="text-xl font-bold text-app-text mb-2">{t.assistant.mainTitle}</h2>
                 <p className="text-sm text-slate-400 leading-relaxed mb-8">
-                  Ask questions about your database in plain English. I'll convert them to SQL and show you the results instantly.
+                  {t.assistant.mainDesc}
                 </p>
                 {!selectedConnId && (
                   <p className="text-xs text-amber-400 bg-amber-900/20 border border-amber-700/30 px-4 py-2.5 rounded-xl">
-                    ← Select a database connection from the left panel to get started.
+                    {t.assistant.pickDbPrompt}
                   </p>
                 )}
                 {selectedConnId && !passwordConfirmed && (
                   <p className="text-xs text-blue-400 bg-blue-900/20 border border-blue-700/30 px-4 py-2.5 rounded-xl">
-                    ← Enter your database password on the left to connect.
+                    {t.assistant.enterPwPrompt}
                   </p>
                 )}
                 {passwordConfirmed && (
                   <div className="grid grid-cols-1 gap-2 w-full max-w-sm">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-1">Try asking…</p>
-                    {suggestions.map(s => (
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-1">{t.assistant.tryAsking}</p>
+                    {suggestions.map((s: string) => (
                       <button
                         key={s}
                         onClick={() => { setInput(s); inputRef.current?.focus(); }}
@@ -586,21 +592,21 @@ export const AssistantPage: React.FC = () => {
           </div>
 
           {/* Input Bar */}
-          <div className="flex-shrink-0 px-6 py-4 bg-slate-900 border-t border-slate-800">
+          <div className="flex-shrink-0 px-6 py-4 bg-app-surface border-t border-app-border">
             {!passwordConfirmed ? (
               <div className="text-center text-xs text-slate-500 py-2">
-                Connect to a database on the left to start chatting.
+                {t.assistant.connectFirstNotice}
               </div>
             ) : (
-              <div className="flex items-end gap-3 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 focus-within:border-blue-500/50 transition-colors shadow-lg">
+              <div className="flex items-end gap-3 bg-app-input border border-app-border rounded-2xl px-4 py-3 focus-within:border-blue-500/50 transition-colors shadow-lg">
                 <textarea
                   ref={inputRef}
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask a question about your data… (Enter to send, Shift+Enter for new line)"
+                  placeholder={t.assistant.inputPlaceholder}
                   rows={1}
-                  className="flex-1 bg-transparent text-sm text-white placeholder-slate-500 resize-none focus:outline-none max-h-32 leading-relaxed"
+                  className="flex-1 bg-transparent text-sm text-app-text placeholder-app-text-muted resize-none focus:outline-none max-h-32 leading-relaxed"
                   style={{ minHeight: '24px' }}
                 />
                 <button
@@ -615,7 +621,7 @@ export const AssistantPage: React.FC = () => {
               </div>
             )}
             <p className="text-[10px] text-slate-600 text-center mt-2">
-              AI may generate incorrect SQL. Always verify before using in production.
+              {t.assistant.disclaimer}
             </p>
           </div>
         </div>

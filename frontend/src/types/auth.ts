@@ -1,4 +1,5 @@
 export type UserRole = 'admin' | 'manager' | 'analyst' | 'viewer';
+export type Language = 'en' | 'hi';
 
 export interface User {
   id: string;
@@ -8,6 +9,7 @@ export interface User {
   is_active: boolean;
   created_at: string;
   avatar_url?: string | null;
+  language?: Language;
 }
 
 export interface AuthResponse {
@@ -60,7 +62,7 @@ export interface ApiKeyCreatedResponse extends ApiKey {
 
 export interface UpdateProfilePayload {
   full_name?: string;
-  role?: UserRole | string;
+  language?: Language;
 }
 
 export interface ChangePasswordPayload {
@@ -68,9 +70,4 @@ export interface ChangePasswordPayload {
   new_password: string;
 }
 
-export interface UserPreferences {
-  emailNotifications: boolean;
-  queryHistory: boolean;
-  darkMode: boolean;
-}
-
+export type ThemeMode = 'light' | 'dark' | 'system';

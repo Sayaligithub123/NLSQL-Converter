@@ -8,6 +8,28 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      (function() {
+        try {
+          var mode = localStorage.getItem('nlsql_theme_mode');
+          if (!mode) {
+            var legacy = localStorage.getItem('nlsql_user_preferences');
+            if (legacy) {
+              var parsed = JSON.parse(legacy);
+              if (parsed.themeMode === 'light' || parsed.themeMode === 'dark' || parsed.themeMode === 'system') {
+                mode = parsed.themeMode;
+              } else if (typeof parsed.darkMode === 'boolean') {
+                mode = parsed.darkMode ? 'dark' : 'light';
+              }
+            }
+          }
+          var isDark = mode === 'dark' || (mode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', isDark);
+          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+          document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
     <style>
       body {
         font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;

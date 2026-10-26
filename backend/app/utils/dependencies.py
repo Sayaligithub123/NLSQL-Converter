@@ -19,6 +19,7 @@ def format_user_doc(doc: dict) -> UserResponse:
         is_active=doc.get("is_active", True),
         created_at=doc.get("created_at"),
         avatar_url=doc.get("avatar_url"),
+        language=doc.get("language", "en"),
     )
 
 

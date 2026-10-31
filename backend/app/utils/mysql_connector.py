@@ -9,7 +9,7 @@ Security notes:
 - Errors are caught and returned as safe messages (no stack traces to client).
 """
 import logging
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, make_url, text
 
 logger = logging.getLogger("nlsql.mysql_connector")
 
@@ -38,6 +38,10 @@ def test_mysql_connection(host: str, port: int, database: str, username: str, pa
         host = "127.0.0.1"
 
     url = build_mysql_url(host, port, database, username, password)
+    logger.info(
+        "Testing MySQL connection using connection_url=%s",
+        make_url(url).render_as_string(hide_password=True),
+    )
     engine = None
     try:
         engine = create_engine(

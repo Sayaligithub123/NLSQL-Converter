@@ -1,7 +1,10 @@
 import React from 'react';
 import { Database, MessageSquareCode, ShieldCheck, Server, ArrowRight, Sparkles } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
 
 export const AuthGraphic: React.FC = () => {
+  const { t } = useLanguage();
+
   return (
     <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-50 via-blue-50/50 to-indigo-50/40 p-12 flex-col justify-between relative overflow-hidden border-r border-slate-200/80">
       {/* Background ambient glow circles */}
@@ -18,7 +21,7 @@ export const AuthGraphic: React.FC = () => {
             <span className="font-bold text-lg text-slate-900 tracking-tight">NL2SQL</span>
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700">AI</span>
           </div>
-          <p className="text-xs text-slate-500 font-medium -mt-0.5">AI Database Assistant</p>
+          <p className="text-xs text-slate-500 font-medium -mt-0.5">{t.nav.brandSubtitle}</p>
         </div>
       </div>
 
@@ -26,15 +29,15 @@ export const AuthGraphic: React.FC = () => {
       <div className="relative z-10 my-auto py-8">
         <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-100/80 text-blue-700 text-xs font-semibold mb-4 border border-blue-200/60">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Next-Gen Enterprise SQL Intelligence</span>
+          <span>{t.authGraphic.badge}</span>
         </div>
 
         <h1 className="text-4xl xl:text-5xl font-extrabold text-slate-900 tracking-tight leading-[1.15]">
-          Turn Your Data into Answers with AI
+          {t.authGraphic.headline}
         </h1>
         
         <p className="mt-4 text-base text-slate-600 leading-relaxed max-w-lg">
-          Ask questions about your database in natural language. No SQL knowledge required.
+          {t.authGraphic.subhead}
         </p>
 
         {/* Feature List */}
@@ -45,8 +48,8 @@ export const AuthGraphic: React.FC = () => {
               <MessageSquareCode className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-slate-900">Natural Language Queries</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Get answers without writing SQL</p>
+              <h3 className="text-sm font-semibold text-slate-900">{t.authGraphic.feat1Title}</h3>
+              <p className="text-xs text-slate-500 mt-0.5">{t.authGraphic.feat1Desc}</p>
             </div>
           </div>
 
@@ -56,8 +59,8 @@ export const AuthGraphic: React.FC = () => {
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-slate-900">Secure & Controlled Access</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Role-based permissions & audit trails</p>
+              <h3 className="text-sm font-semibold text-slate-900">{t.authGraphic.feat2Title}</h3>
+              <p className="text-xs text-slate-500 mt-0.5">{t.authGraphic.feat2Desc}</p>
             </div>
           </div>
 
@@ -67,18 +70,18 @@ export const AuthGraphic: React.FC = () => {
               <Server className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-slate-900">Works with Your Databases</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Connect your existing MySQL & MongoDB databases</p>
+              <h3 className="text-sm font-semibold text-slate-900">{t.authGraphic.feat3Title}</h3>
+              <p className="text-xs text-slate-500 mt-0.5">{t.authGraphic.feat3Desc}</p>
             </div>
           </div>
         </div>
 
-        {/* Interactive Query Prompt Preview Banner (matches image bottom card) */}
+        {/* Interactive Query Prompt Preview Banner */}
         <div className="mt-8 p-4 bg-white/90 backdrop-blur-md rounded-2xl shadow-xl shadow-blue-500/5 border border-blue-100/80 max-w-md">
           <div className="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-xl px-3.5 py-2.5 shadow-inner">
             <div className="flex items-center space-x-2 text-xs text-slate-700 font-medium">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Show me total employees in each department</span>
+              <span>{t.authGraphic.promptSample}</span>
             </div>
             <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm hover:bg-blue-700 transition-colors cursor-pointer">
               <ArrowRight className="w-3.5 h-3.5" />
@@ -96,10 +99,10 @@ export const AuthGraphic: React.FC = () => {
                 <div className="w-12 h-4 rounded-full bg-blue-600 shadow-md -mt-2 border border-blue-500"></div>
               </div>
               <div>
-                <p className="text-[11px] font-bold text-slate-800">Company DB</p>
+                <p className="text-[11px] font-bold text-slate-800">{t.authGraphic.companyDb}</p>
                 <p className="text-[10px] text-emerald-600 font-medium flex items-center">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1"></span>
-                  Active Schema Indexed
+                  {t.authGraphic.activeSchema}
                 </p>
               </div>
             </div>
@@ -118,9 +121,9 @@ export const AuthGraphic: React.FC = () => {
 
       {/* Bottom Footer Info */}
       <div className="relative z-10 flex items-center justify-between text-xs text-slate-500 pt-4 border-t border-slate-200/60">
-        <p>© 2026 NL2SQL AI Assistant. All rights reserved.</p>
+        <p>{t.authGraphic.footerRights}</p>
         <span className="inline-flex items-center text-slate-500 font-medium">
-          Enterprise Ready • MongoDB & MySQL
+          {t.authGraphic.footerTech}
         </span>
       </div>
     </div>

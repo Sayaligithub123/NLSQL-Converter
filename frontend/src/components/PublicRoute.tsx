@@ -12,9 +12,9 @@ export const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-app-bg">
         <Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-4" />
-        <p className="text-slate-600 font-medium text-sm">Loading...</p>
+        <p className="text-app-text-muted font-medium text-sm">Loading...</p>
       </div>
     );
   }

@@ -1,51 +1,49 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme, type ThemeMode } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 import { authService } from '../services/authService';
-import { apiKeysApi } from '../services/apiKeysApi';
 import { AppLayout } from '../components/AppLayout';
-import type { ApiKey, ApiKeyCreatedResponse, UserPreferences, UserRole } from '../types/auth';
+import type { Language } from '../types/auth';
 import {
   User,
   Lock,
-  SlidersHorizontal,
-  KeyRound,
   Save,
   Loader2,
   CheckCircle2,
   AlertCircle,
   Eye,
   EyeOff,
-  Copy,
-  Check,
-  Trash2,
-  Plus,
-  Shield,
-  Bell,
-  History,
   Moon,
-  Clock,
+  Sun,
+  Laptop,
+  Camera,
+  Trash2,
+  Upload,
+  AlertTriangle,
+  Globe,
 } from 'lucide-react';
 
-type SettingsTab = 'profile' | 'password' | 'preferences' | 'api-keys';
+type SettingsTab = 'profile' | 'password' | 'appearance' | 'language';
 
-const PREFERENCES_STORAGE_KEY = 'nlsql_user_preferences';
+// Allowed image MIME types for client-side validation
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+// Maximum file size: 2 MB
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
-const DEFAULT_PREFERENCES: UserPreferences = {
-  emailNotifications: true,
-  queryHistory: true,
-  darkMode: false,
-};
-
-const formatDate = (dateStr?: string) => {
+const formatDate = (dateStr?: string | null) => {
   if (!dateStr) return 'Recently';
   try {
     const d = new Date(dateStr);
     return isNaN(d.getTime())
       ? 'Recently'
-      : d.toLocaleDateString(undefined, {
+      : d.toLocaleString(undefined, {
           year: 'numeric',
           month: 'short',
           day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
         });
   } catch {
     return dateStr;
@@ -53,20 +51,30 @@ const formatDate = (dateStr?: string) => {
 };
 
 export const SettingsPage: React.FC = () => {
-  const { user, updateUser } = useAuth();
+  const navigate = useNavigate();
+  const { user, updateUser, logout } = useAuth();
+  const { themeMode, setThemeMode, resolvedTheme } = useTheme();
+  const { language, setLanguage, t } = useLanguage();
+
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
 
-  // Global messages
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // ── Profile State ──────────────────────────────────────────────────────────
+  // ── Profile ───────────────────────────────────────────────────────────────
   const [fullName, setFullName] = useState<string>(() => user?.full_name || '');
-  const [role, setRole] = useState<UserRole>(() => (user?.role as UserRole) || 'manager');
   const [lastUserId, setLastUserId] = useState<string | undefined>(() => user?.id);
   const [savingProfile, setSavingProfile] = useState<boolean>(false);
 
-  // ── Change Password State ──────────────────────────────────────────────────
+  // ── Avatar ────────────────────────────────────────────────────────────────
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(() => user?.avatar_url ?? null);
+  const [savingAvatar, setSavingAvatar] = useState<boolean>(false);
+  const [avatarError, setAvatarError] = useState<string>('');
+  const [avatarDirty, setAvatarDirty] = useState<boolean>(false);
+  const [pendingAvatarDataUrl, setPendingAvatarDataUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Change Password ───────────────────────────────────────────────────────
   const [currentPassword, setCurrentPassword] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
@@ -75,70 +83,28 @@ export const SettingsPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
   const [changingPassword, setChangingPassword] = useState<boolean>(false);
 
-  // ── Preferences State ──────────────────────────────────────────────────────
-  const [preferences, setPreferences] = useState<UserPreferences>(() => {
-    try {
-      const stored = localStorage.getItem(PREFERENCES_STORAGE_KEY);
-      if (stored) {
-        return { ...DEFAULT_PREFERENCES, ...JSON.parse(stored) };
-      }
-    } catch {
-      // fallback to defaults
-    }
-    return DEFAULT_PREFERENCES;
-  });
-  const [savingPreferences, setSavingPreferences] = useState<boolean>(false);
+  // ── Delete Account (Danger Zone) ──────────────────────────────────────────
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState<string>('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string>('');
 
-  // ── API Keys State ─────────────────────────────────────────────────────────
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
-  const [loadingKeys, setLoadingKeys] = useState<boolean>(false);
-  const [creatingKey, setCreatingKey] = useState<boolean>(false);
-  const [newKeyName, setNewKeyName] = useState<string>('');
-  const [createdKeyData, setCreatedKeyData] = useState<ApiKeyCreatedResponse | null>(null);
-  const [copiedKey, setCopiedKey] = useState<boolean>(false);
-  const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null);
+  // ── Language changing state ───────────────────────────────────────────────
+  const [savingLanguage, setSavingLanguage] = useState<boolean>(false);
 
-  const fetchApiKeys = useCallback(async () => {
-    try {
-      setLoadingKeys(true);
-      const keys = await apiKeysApi.list();
-      setApiKeys(keys);
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Failed to load API keys.';
-      setErrorMessage(msg);
-    } finally {
-      setLoadingKeys(false);
-    }
-  }, []);
-
-  // Sync profile form when user identity loads or switches
+  // Sync profile fields when user changes
   useEffect(() => {
     if (user && user.id !== lastUserId) {
       setFullName(user.full_name || '');
-      setRole((user.role as UserRole) || 'manager');
+      setAvatarPreview(user.avatar_url ?? null);
       setLastUserId(user.id);
     }
   }, [user, lastUserId]);
 
-  // Apply dark mode preference on change/mount
-  useEffect(() => {
-    if (preferences.darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [preferences.darkMode]);
-
-  // Fetch API keys when opening API keys tab
-  useEffect(() => {
-    if (activeTab === 'api-keys') {
-      fetchApiKeys();
-    }
-  }, [activeTab, fetchApiKeys]);
-
   const clearMessages = () => {
     setSuccessMessage('');
     setErrorMessage('');
+    setDeleteError('');
   };
 
   const handleTabChange = (tab: SettingsTab) => {
@@ -146,18 +112,17 @@ export const SettingsPage: React.FC = () => {
     clearMessages();
   };
 
-  // ── 1. Profile Update Handler ──────────────────────────────────────────────
+  // ── Profile handlers ──────────────────────────────────────────────────────
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearMessages();
 
     if (!fullName.trim()) {
-      setErrorMessage('Full name is required.');
+      setErrorMessage(t.settings.nameRequired);
       return;
     }
-
     if (fullName.trim().length < 2) {
-      setErrorMessage('Full name must be at least 2 characters long.');
+      setErrorMessage(t.settings.nameMinLength);
       return;
     }
 
@@ -165,42 +130,108 @@ export const SettingsPage: React.FC = () => {
       setSavingProfile(true);
       const updated = await authService.updateProfile({
         full_name: fullName.trim(),
-        role,
       });
-
-      // Synchronize global auth context and localStorage
       updateUser(updated);
-      setSuccessMessage('Profile details updated successfully.');
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Failed to update profile. Please try again.';
+      setSuccessMessage(t.settings.profileUpdatedSuccess);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
+        || (err as { message?: string })?.message
+        || 'Failed to update profile. Please try again.';
       setErrorMessage(msg);
     } finally {
       setSavingProfile(false);
     }
   };
 
-  // ── 2. Change Password Handler ─────────────────────────────────────────────
+  // ── Avatar handlers ───────────────────────────────────────────────────────
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAvatarError('');
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setAvatarError(t.settings.photoInvalidType);
+      return;
+    }
+
+    if (file.size > MAX_FILE_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      setAvatarError(t.settings.photoTooLarge.replace('{size}', sizeMb));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setAvatarPreview(dataUrl);
+      setPendingAvatarDataUrl(dataUrl);
+      setAvatarDirty(true);
+    };
+    reader.readAsDataURL(file);
+
+    e.target.value = '';
+  };
+
+  const handleRemoveAvatar = () => {
+    setAvatarError('');
+    setAvatarPreview(null);
+    setPendingAvatarDataUrl(null);
+    setAvatarDirty(true);
+  };
+
+  const handleCancelAvatarEdit = () => {
+    setAvatarError('');
+    setAvatarPreview(user?.avatar_url ?? null);
+    setPendingAvatarDataUrl(null);
+    setAvatarDirty(false);
+  };
+
+  const handleSaveAvatar = async () => {
+    clearMessages();
+    setSavingAvatar(true);
+    setAvatarError('');
+    try {
+      const updated = await authService.updateAvatar(pendingAvatarDataUrl);
+      updateUser(updated);
+      setAvatarPreview(updated.avatar_url ?? null);
+      setPendingAvatarDataUrl(null);
+      setAvatarDirty(false);
+      setSuccessMessage(
+        pendingAvatarDataUrl ? t.settings.photoSavedSuccess : t.settings.photoRemovedSuccess,
+      );
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        || 'Failed to save profile picture. Please try again.';
+      setAvatarError(msg);
+      setAvatarPreview(user?.avatar_url ?? null);
+      setAvatarDirty(false);
+      setPendingAvatarDataUrl(null);
+    } finally {
+      setSavingAvatar(false);
+    }
+  };
+
+  // ── Change Password handlers ──────────────────────────────────────────────
   const handleChangePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearMessages();
 
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setErrorMessage('Please fill in all password fields.');
+      setErrorMessage(t.settings.fillAllPwFields);
       return;
     }
-
     if (newPassword.length < 6) {
-      setErrorMessage('New password must contain at least 6 characters.');
+      setErrorMessage(t.settings.pwMinChars);
       return;
     }
-
     if (newPassword !== confirmPassword) {
-      setErrorMessage('New password and confirm password do not match.');
+      setErrorMessage(t.settings.pwMismatch);
       return;
     }
-
     if (currentPassword === newPassword) {
-      setErrorMessage('New password must be different from your current password.');
+      setErrorMessage(t.settings.pwSameAsCurrent);
       return;
     }
 
@@ -210,105 +241,60 @@ export const SettingsPage: React.FC = () => {
         current_password: currentPassword,
         new_password: newPassword,
       });
-
-      // Clear password fields on success
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setSuccessMessage(res.message || 'Password changed successfully.');
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Failed to change password. Please verify your current password.';
+      setSuccessMessage(res.message || t.settings.passwordUpdatedSuccess);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
+        || (err as { message?: string })?.message
+        || 'Failed to change password. Please verify your current password.';
       setErrorMessage(msg);
     } finally {
       setChangingPassword(false);
     }
   };
 
-  // ── 3. Preferences Handler ─────────────────────────────────────────────────
-  const handleTogglePreference = (key: keyof UserPreferences) => {
-    setPreferences((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      try {
-        localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // ignore storage errors
-      }
-      return next;
-    });
-  };
-
-  const handleSavePreferences = () => {
+  // ── Language Preference Handler ───────────────────────────────────────────
+  const handleLanguageChange = async (newLang: Language) => {
+    if (newLang === language) return;
     clearMessages();
-    setSavingPreferences(true);
+    setSavingLanguage(true);
     try {
-      localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
-      setSuccessMessage('Preferences saved successfully. These will persist across reloads.');
-    } catch {
-      setErrorMessage('Could not save preferences to local storage.');
+      await setLanguage(newLang);
+      setSuccessMessage(t.settings.languageUpdatedSuccess);
+    } catch (err: unknown) {
+      console.error('Failed to change language:', err);
     } finally {
-      setTimeout(() => setSavingPreferences(false), 300);
+      setSavingLanguage(false);
     }
   };
 
-  // ── 4. API Keys Handlers ───────────────────────────────────────────────────
-  const handleCreateApiKey = async (e: React.FormEvent) => {
-    e.preventDefault();
-    clearMessages();
-
-    const name = newKeyName.trim();
-    if (!name) {
-      setErrorMessage('Please provide a name/label for your API key.');
+  // ── Delete Account handlers ───────────────────────────────────────────────
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmationText.trim() !== 'DELETE') {
+      setDeleteError(t.settings.deleteWordError);
       return;
     }
 
+    setDeleteError('');
+    setIsDeletingAccount(true);
+
     try {
-      setCreatingKey(true);
-      const created = await apiKeysApi.create(name);
-      setCreatedKeyData(created);
-      setNewKeyName('');
-      setSuccessMessage('API key generated successfully! Make sure to copy it now.');
-      // Refresh list
-      await fetchApiKeys();
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Failed to generate API key.';
-      setErrorMessage(msg);
-    } finally {
-      setCreatingKey(false);
+      await authService.deleteAccount();
+      logout();
+      navigate('/login');
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        || t.settings.deleteFailed;
+      setDeleteError(msg);
+      setIsDeletingAccount(false);
     }
   };
 
-  const handleCopyKey = async (keyString: string) => {
-    try {
-      await navigator.clipboard.writeText(keyString);
-      setCopiedKey(true);
-      setTimeout(() => setCopiedKey(false), 2500);
-    } catch {
-      // fallback
-    }
-  };
-
-  const handleRevokeApiKey = async (keyId: string, keyName: string) => {
-    if (!window.confirm(`Are you sure you want to revoke the API key "${keyName}"? Applications using this key will immediately lose access.`)) {
-      return;
-    }
-
-    clearMessages();
-    try {
-      setRevokingKeyId(keyId);
-      await apiKeysApi.revoke(keyId);
-      setApiKeys((prev) => prev.filter((k) => k.id !== keyId));
-      if (createdKeyData?.id === keyId) {
-        setCreatedKeyData(null);
-      }
-      setSuccessMessage(`API key "${keyName}" was successfully revoked.`);
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Failed to revoke API key.';
-      setErrorMessage(msg);
-    } finally {
-      setRevokingKeyId(null);
-    }
-  };
-
+  // ── Helpers ───────────────────────────────────────────────────────────────
   const getInitials = (name: string) => {
     if (!name) return 'U';
     return name
@@ -320,31 +306,35 @@ export const SettingsPage: React.FC = () => {
   };
 
   const tabs = [
-    { id: 'profile' as SettingsTab, label: 'Profile', icon: User },
-    { id: 'password' as SettingsTab, label: 'Change Password', icon: Lock },
-    { id: 'preferences' as SettingsTab, label: 'Preferences', icon: SlidersHorizontal },
-    { id: 'api-keys' as SettingsTab, label: 'API Keys', icon: KeyRound },
+    { id: 'profile' as SettingsTab, label: t.settings.tabProfile, icon: User },
+    { id: 'password' as SettingsTab, label: t.settings.tabPassword, icon: Lock },
+    { id: 'appearance' as SettingsTab, label: t.settings.tabAppearance, icon: Sun },
+    { id: 'language' as SettingsTab, label: t.settings.tabLanguage, icon: Globe },
   ];
+
+  const inputClass =
+    'w-full px-4 py-2.5 rounded-xl border border-app-border bg-app-input text-sm text-app-text placeholder-app-text-muted focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors';
+
+  const deleteWarningText = t.settings.deleteConfirmWarning.replace('{email}', user?.email || '');
+  const deleteTypePrompt = t.settings.deleteTypeConfirm.replace('{word}', 'DELETE');
 
   return (
     <AppLayout>
-      {/* ── Header ────────────────────────────────────────────────────────── */}
-      <header className="h-16 bg-white border-b border-slate-200 flex items-center px-8 flex-shrink-0 sticky top-0 z-10">
+      <header className="h-16 bg-app-surface border-b border-app-border flex items-center px-8 flex-shrink-0 sticky top-0 z-10 transition-colors">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-            <User className="w-4 h-4 text-blue-600" />
+          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center">
+            <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-slate-900 leading-tight">Settings & Profile</h1>
-            <p className="text-xs text-slate-500">Manage account information, security credentials, preferences, and API keys</p>
+            <h1 className="text-base font-bold text-app-text leading-tight">{t.settings.headerTitle}</h1>
+            <p className="text-xs text-app-text-muted">{t.settings.headerSubtitle}</p>
           </div>
         </div>
       </header>
 
-      {/* ── Main Content Container ─────────────────────────────────────────── */}
       <div className="flex-1 p-6 md:p-8 max-w-5xl w-full mx-auto">
-        {/* Navigation Tabs */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-1.5 mb-6 shadow-xs">
+        {/* Tab navigation */}
+        <div className="bg-app-surface border border-app-border rounded-2xl p-1.5 mb-6 shadow-xs transition-colors">
           <div className="flex flex-wrap gap-1.5">
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -356,7 +346,7 @@ export const SettingsPage: React.FC = () => {
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
                     active
                       ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      : 'text-app-text-muted hover:text-app-text hover:bg-app-muted'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -367,163 +357,367 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Global Feedback Alerts */}
+        {/* Global messages */}
         {successMessage && (
-          <div className="mb-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm text-emerald-800 animate-in fade-in duration-200">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+          <div className="mb-6 flex items-start gap-3 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-3.5 text-sm text-emerald-800 dark:text-emerald-300">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1 font-medium">{successMessage}</div>
-            <button
-              onClick={() => setSuccessMessage('')}
-              className="text-emerald-600 hover:text-emerald-800 cursor-pointer text-xs"
-            >
-              Dismiss
+            <button onClick={() => setSuccessMessage('')} className="text-emerald-600 dark:text-emerald-400 cursor-pointer text-xs">
+              {t.common.dismiss}
             </button>
           </div>
         )}
 
         {errorMessage && (
-          <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 text-sm text-red-800 animate-in fade-in duration-200">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 dark:border-red-800/80 bg-red-50 dark:bg-red-950/40 px-4 py-3.5 text-sm text-red-800 dark:text-red-300">
+            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1 font-medium">{errorMessage}</div>
-            <button
-              onClick={() => setErrorMessage('')}
-              className="text-red-600 hover:text-red-800 cursor-pointer text-xs"
-            >
-              Dismiss
+            <button onClick={() => setErrorMessage('')} className="text-red-600 dark:text-red-400 cursor-pointer text-xs">
+              {t.common.dismiss}
             </button>
           </div>
         )}
 
-        {/* ── 1. PROFILE SECTION ────────────────────────────────────────────── */}
+        {/* ── Profile Tab ─────────────────────────────────────────────────── */}
         {activeTab === 'profile' && (
-          <section className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Personal Information</h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Update your display name and role settings. Email address is managed by your account administrator.
+          <div className="space-y-6">
+            {/* ── Profile Picture card ── */}
+            <section className="bg-app-surface border border-app-border rounded-2xl shadow-xs overflow-hidden transition-colors">
+              <div className="p-6 border-b border-app-border">
+                <h2 className="text-base font-bold text-app-text">{t.settings.avatarSectionTitle}</h2>
+                <p className="text-xs text-app-text-muted mt-0.5">
+                  {t.settings.avatarSectionSubtitle}
                 </p>
               </div>
-              <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-200 capitalize">
-                {user?.role || 'manager'}
-              </span>
-            </div>
+              <div className="p-6">
+                {avatarError && (
+                  <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 dark:border-red-800/80 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-800 dark:text-red-300">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>{avatarError}</span>
+                  </div>
+                )}
 
-            <form onSubmit={handleProfileSubmit} className="p-6">
-              {/* User Avatar Badge */}
-              <div className="flex items-center gap-4 mb-8 p-4 rounded-xl bg-slate-50 border border-slate-100">
-                <div className="w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center text-xl font-bold shadow-xs">
-                  {getInitials(fullName || user?.full_name || '')}
-                </div>
-                <div>
-                  <h3 className="font-semibold text-slate-900 text-base">
-                    {fullName || user?.full_name || 'User'}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
-                    <span>{user?.email}</span>
-                    <span className="inline-block w-1 h-1 rounded-full bg-slate-300"></span>
-                    <span className="capitalize text-blue-600 font-medium">{role}</span>
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Member since {formatDate(user?.created_at)}
-                  </p>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                  {/* Avatar preview */}
+                  <div className="relative flex-shrink-0">
+                    {avatarPreview ? (
+                      <img
+                        src={avatarPreview}
+                        alt="Profile picture"
+                        className="w-24 h-24 rounded-full object-cover border-2 border-app-border shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-24 h-24 rounded-full bg-blue-600 text-white flex items-center justify-center text-2xl font-bold border-2 border-app-border shadow-sm select-none">
+                        {getInitials(fullName || user?.full_name || '')}
+                      </div>
+                    )}
+
+                    {/* Camera overlay button */}
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      title={t.settings.changePhotoBtn}
+                      className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-md transition-colors cursor-pointer"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Hidden file input */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept={ALLOWED_TYPES.join(',')}
+                      className="hidden"
+                      onChange={handleFileChange}
+                      aria-label="Upload profile picture"
+                    />
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex flex-col gap-3">
+                    <p className="text-xs text-app-text-muted">
+                      {avatarPreview
+                        ? t.settings.avatarSetMessage
+                        : t.settings.avatarNoneMessage}
+                    </p>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 px-4 py-2 border border-app-border bg-app-input hover:bg-app-muted text-app-text rounded-xl text-sm font-medium transition-colors cursor-pointer"
+                      >
+                        <Upload className="w-4 h-4" />
+                        {avatarPreview ? t.settings.changePhotoBtn : t.settings.uploadPhotoBtn}
+                      </button>
+
+                      {avatarPreview && (
+                        <button
+                          type="button"
+                          onClick={handleRemoveAvatar}
+                          className="inline-flex items-center gap-2 px-4 py-2 border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950/60 text-red-700 dark:text-red-400 rounded-xl text-sm font-medium transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          {t.settings.removePhotoBtn}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Pending changes action bar */}
+                    {avatarDirty && (
+                      <div className="flex flex-wrap gap-2 pt-1 border-t border-app-border">
+                        <button
+                          type="button"
+                          onClick={handleSaveAvatar}
+                          disabled={savingAvatar}
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer shadow-xs"
+                        >
+                          {savingAvatar ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                          {savingAvatar ? t.settings.savingPictureBtn : t.settings.savePictureBtn}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelAvatarEdit}
+                          disabled={savingAvatar}
+                          className="inline-flex items-center gap-2 px-4 py-2 border border-app-border bg-app-input hover:bg-app-muted text-app-text rounded-xl text-sm font-medium transition-colors cursor-pointer"
+                        >
+                          {t.common.cancel}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
+            </section>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Full Name */}
+            {/* ── Personal Information card ── */}
+            <section className="bg-app-surface border border-app-border rounded-2xl shadow-xs overflow-hidden transition-colors">
+              <div className="p-6 border-b border-app-border flex items-center justify-between">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                    Full Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                    placeholder="Enter your full name"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1.5">
-                    This name will appear on your activity log and generated SQL reports.
+                  <h2 className="text-base font-bold text-app-text">{t.settings.personalInfoTitle}</h2>
+                  <p className="text-xs text-app-text-muted mt-0.5">
+                    {t.settings.personalInfoSubtitle}
                   </p>
                 </div>
+                <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 capitalize">
+                  {user?.role || 'user'}
+                </span>
+              </div>
 
-                {/* Email Address (Read-only) */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                    Email Address <span className="text-slate-400 font-normal">(Read-only)</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      value={user?.email || ''}
-                      disabled
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-sm text-slate-500 cursor-not-allowed select-none"
+              <form onSubmit={handleProfileSubmit} className="p-6">
+                <div className="flex items-center gap-4 mb-8 p-4 rounded-xl bg-app-muted border border-app-border">
+                  {avatarPreview ? (
+                    <img
+                      src={avatarPreview}
+                      alt="Avatar"
+                      className="w-16 h-16 rounded-full object-cover border-2 border-app-border shadow-xs flex-shrink-0"
                     />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-                      <Lock className="w-3.5 h-3.5" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center text-xl font-bold shadow-xs flex-shrink-0">
+                      {getInitials(fullName || user?.full_name || '')}
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="font-semibold text-app-text text-base">
+                      {fullName || user?.full_name || 'User'}
+                    </h3>
+                    <p className="text-xs text-app-text-muted mt-0.5 flex items-center gap-1.5">
+                      <span>{user?.email}</span>
+                      <span className="inline-block w-1 h-1 rounded-full bg-app-border"></span>
+                      <span className="capitalize text-blue-600 dark:text-blue-400 font-medium">{user?.role}</span>
+                    </p>
+                    <p className="text-[11px] text-app-text-muted mt-1">
+                      {t.settings.memberSince.replace('{date}', formatDate(user?.created_at))}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-xs font-semibold text-app-text uppercase tracking-wider mb-2">
+                      {t.settings.fullNameLabel} <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      required
+                      placeholder={t.settings.fullNamePlaceholder}
+                      className={inputClass}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-app-text uppercase tracking-wider mb-2">
+                      {t.settings.emailLabel} <span className="text-app-text-muted font-normal">{t.settings.emailNote}</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        value={user?.email || ''}
+                        disabled
+                        className={`${inputClass} bg-app-muted text-app-text-muted cursor-not-allowed`}
+                      />
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-app-text-muted">
+                        <Lock className="w-3.5 h-3.5" />
+                      </div>
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1.5">
-                    Your primary login email address cannot be changed directly.
-                  </p>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-app-text uppercase tracking-wider mb-2">
+                      {t.settings.roleLabel} <span className="text-app-text-muted font-normal">{t.settings.roleNote}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={user?.role || 'user'}
+                      disabled
+                      className={`${inputClass} bg-app-muted text-app-text-muted cursor-not-allowed capitalize`}
+                    />
+                    <p className="text-[11px] text-app-text-muted mt-1.5">
+                      {t.settings.roleNotice}
+                    </p>
+                  </div>
                 </div>
 
-                {/* Role */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                    System Role
-                  </label>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as UserRole)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors cursor-pointer"
+                <div className="mt-8 pt-5 border-t border-app-border flex items-center justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingProfile}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-xs transition-colors cursor-pointer"
                   >
-                    <option value="admin">Admin (Full permissions)</option>
-                    <option value="manager">Manager (Database & query management)</option>
-                    <option value="analyst">Analyst (Execute queries & export data)</option>
-                    <option value="viewer">Viewer (Read-only)</option>
-                  </select>
-                  <p className="text-[11px] text-slate-400 mt-1.5">
-                    Defines your database execution and administration permissions.
-                  </p>
+                    {savingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {t.settings.saveProfileBtn}
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            {/* ── Danger Zone: Delete Account card ── */}
+            <section className="bg-app-surface border border-red-300 dark:border-red-900/60 rounded-2xl shadow-xs overflow-hidden transition-colors">
+              <div className="p-6 border-b border-red-200 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/20 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-9 h-9 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center text-red-600 dark:text-red-400 flex-shrink-0">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-red-600 dark:text-red-400">{t.settings.dangerZoneTitle}</h2>
+                    <p className="text-xs text-app-text-muted">{t.settings.dangerZoneSubtitle}</p>
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-8 pt-5 border-t border-slate-100 flex items-center justify-end">
-                <button
-                  type="submit"
-                  disabled={savingProfile}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-xs transition-colors cursor-pointer"
-                >
-                  {savingProfile ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Save className="w-4 h-4" />
+              <div className="p-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-app-text">{t.settings.deleteAccountTitle}</h3>
+                    <p className="text-xs text-app-text-muted mt-1 max-w-xl">
+                      {t.settings.deleteAccountDesc}
+                    </p>
+                  </div>
+                  {!showDeleteConfirm && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDeleteConfirm(true);
+                        setDeleteConfirmationText('');
+                        setDeleteError('');
+                      }}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold shadow-xs transition-colors cursor-pointer flex-shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      {t.settings.deleteAccountBtn}
+                    </button>
                   )}
-                  Save Profile Changes
-                </button>
+                </div>
+
+                {/* Explicit confirmation drawer */}
+                {showDeleteConfirm && (
+                  <div className="mt-6 p-5 rounded-xl border border-red-300 dark:border-red-800 bg-red-50/80 dark:bg-red-950/40 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-sm font-bold text-red-700 dark:text-red-300">
+                          {t.settings.deleteConfirmTitle}
+                        </h4>
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-1 leading-relaxed">
+                          {deleteWarningText}
+                        </p>
+                      </div>
+                    </div>
+
+                    {deleteError && (
+                      <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-200 text-xs font-medium">
+                        {deleteError}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-semibold text-app-text uppercase tracking-wider mb-2">
+                        {deleteTypePrompt}
+                      </label>
+                      <input
+                        type="text"
+                        value={deleteConfirmationText}
+                        onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                        placeholder={t.settings.deleteInputPlaceholder}
+                        className={`${inputClass} border-red-300 dark:border-red-700 focus:border-red-600 focus:ring-red-500/20`}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowDeleteConfirm(false);
+                          setDeleteConfirmationText('');
+                          setDeleteError('');
+                        }}
+                        disabled={isDeletingAccount}
+                        className="px-4 py-2 border border-app-border bg-app-input hover:bg-app-muted text-app-text rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        {t.common.cancel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteAccount}
+                        disabled={isDeletingAccount || deleteConfirmationText.trim() !== 'DELETE'}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                      >
+                        {isDeletingAccount ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            {t.settings.deletingBtn}
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="w-3.5 h-3.5" />
+                            {t.settings.deleteConfirmBtn}
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </form>
-          </section>
+            </section>
+          </div>
         )}
 
-        {/* ── 2. CHANGE PASSWORD SECTION ────────────────────────────────────── */}
+        {/* ── Change Password Tab ──────────────────────────────────────────── */}
         {activeTab === 'password' && (
-          <section className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-6 border-b border-slate-100">
-              <h2 className="text-base font-bold text-slate-900">Change Password</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Update your account password. Ensure your password is at least 6 characters and unique.
+          <section className="bg-app-surface border border-app-border rounded-2xl shadow-xs overflow-hidden transition-colors">
+            <div className="p-6 border-b border-app-border">
+              <h2 className="text-base font-bold text-app-text">{t.settings.changePasswordTitle}</h2>
+              <p className="text-xs text-app-text-muted mt-0.5">
+                {t.settings.changePasswordSubtitle}
               </p>
             </div>
 
             <form onSubmit={handleChangePasswordSubmit} className="p-6 max-w-xl">
-              {/* Current Password */}
               <div className="mb-5">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                  Current Password <span className="text-red-500">*</span>
+                <label className="block text-xs font-semibold text-app-text uppercase tracking-wider mb-2">
+                  {t.settings.currentPasswordLabel} <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -531,14 +725,14 @@ export const SettingsPage: React.FC = () => {
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     required
-                    placeholder="Enter current password"
+                    placeholder={t.settings.currentPasswordPlaceholder}
                     autoComplete="current-password"
-                    className="w-full px-4 py-2.5 pr-11 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                    className={`${inputClass} pr-11`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-app-text-muted p-1 cursor-pointer"
                     aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}
                   >
                     {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -546,10 +740,9 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* New Password */}
               <div className="mb-5">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                  New Password <span className="text-red-500">*</span>
+                <label className="block text-xs font-semibold text-app-text uppercase tracking-wider mb-2">
+                  {t.settings.newPasswordLabel} <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -557,28 +750,24 @@ export const SettingsPage: React.FC = () => {
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
-                    placeholder="Enter new password (min. 6 characters)"
+                    placeholder={t.settings.newPasswordPlaceholder}
                     autoComplete="new-password"
-                    className="w-full px-4 py-2.5 pr-11 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                    className={`${inputClass} pr-11`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-app-text-muted p-1 cursor-pointer"
                     aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
                   >
                     {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1.5">
-                  Must be at least 6 characters. Use letters, numbers, and symbols for best security.
-                </p>
               </div>
 
-              {/* Confirm New Password */}
               <div className="mb-6">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                  Confirm New Password <span className="text-red-500">*</span>
+                <label className="block text-xs font-semibold text-app-text uppercase tracking-wider mb-2">
+                  {t.settings.confirmPasswordLabel} <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -586,14 +775,14 @@ export const SettingsPage: React.FC = () => {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
-                    placeholder="Re-enter new password"
+                    placeholder={t.settings.confirmPasswordPlaceholder}
                     autoComplete="new-password"
-                    className="w-full px-4 py-2.5 pr-11 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                    className={`${inputClass} pr-11`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-app-text-muted p-1 cursor-pointer"
                     aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
                   >
                     {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -601,313 +790,163 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-100">
+              <div className="pt-4 border-t border-app-border">
                 <button
                   type="submit"
                   disabled={changingPassword}
                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-xs transition-colors cursor-pointer"
                 >
-                  {changingPassword ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Lock className="w-4 h-4" />
-                  )}
-                  Update Password
+                  {changingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                  {t.settings.updatePasswordBtn}
                 </button>
               </div>
             </form>
           </section>
         )}
 
-        {/* ── 3. PREFERENCES SECTION ────────────────────────────────────────── */}
-        {activeTab === 'preferences' && (
-          <section className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-6 border-b border-slate-100">
-              <h2 className="text-base font-bold text-slate-900">Application Preferences</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Customize your workspace experience. Your preferences are saved in your browser and persist across sessions.
+        {/* ── Appearance Tab ───────────────────────────────────────────────── */}
+        {activeTab === 'appearance' && (
+          <section className="bg-app-surface border border-app-border rounded-2xl shadow-xs overflow-hidden transition-colors">
+            <div className="p-6 border-b border-app-border">
+              <h2 className="text-base font-bold text-app-text">{t.settings.appearanceTitle}</h2>
+              <p className="text-xs text-app-text-muted mt-0.5">
+                {t.settings.appearanceSubtitle}
               </p>
             </div>
-
-            <div className="p-6 space-y-6">
-              {/* Email Notifications */}
-              <div className="flex items-start justify-between gap-6 py-3 border-b border-slate-100">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Bell className="w-4 h-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-900">Email Notifications</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Receive email updates regarding schema indexing status, security alerts, and background job completions.
-                    </p>
-                  </div>
+            <div className="p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  {resolvedTheme === 'dark' ? (
+                    <Moon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  ) : (
+                    <Sun className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleTogglePreference('emailNotifications')}
-                  className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors cursor-pointer ${
-                    preferences.emailNotifications ? 'bg-blue-600' : 'bg-slate-300'
-                  }`}
-                  aria-label="Toggle email notifications"
-                >
-                  <span
-                    className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                      preferences.emailNotifications ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
+                <div>
+                  <h3 className="text-sm font-semibold text-app-text">{t.settings.themeCardTitle}</h3>
+                  <p className="text-xs text-app-text-muted mt-0.5">
+                    {themeMode === 'system'
+                      ? t.settings.themeActiveSystem.replace('{resolved}', resolvedTheme)
+                      : resolvedTheme === 'dark'
+                      ? t.settings.themeActiveDark
+                      : t.settings.themeActiveLight}
+                  </p>
+                </div>
               </div>
 
-              {/* Query History */}
-              <div className="flex items-start justify-between gap-6 py-3 border-b border-slate-100">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <History className="w-4 h-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-900">Query History Logging</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Save natural-language queries, generated SQL, and execution metrics to your personal Query History log.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleTogglePreference('queryHistory')}
-                  className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors cursor-pointer ${
-                    preferences.queryHistory ? 'bg-blue-600' : 'bg-slate-300'
-                  }`}
-                  aria-label="Toggle query history"
-                >
-                  <span
-                    className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                      preferences.queryHistory ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Dark Mode */}
-              <div className="flex items-start justify-between gap-6 py-3 border-b border-slate-100">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Moon className="w-4 h-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-900">Dark Mode</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Switch between light and high-contrast dark visual mode for low-light working environments.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleTogglePreference('darkMode')}
-                  className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors cursor-pointer ${
-                    preferences.darkMode ? 'bg-blue-600' : 'bg-slate-300'
-                  }`}
-                  aria-label="Toggle dark mode"
-                >
-                  <span
-                    className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                      preferences.darkMode ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              <div className="pt-3 flex items-center justify-end">
-                <button
-                  type="button"
-                  onClick={handleSavePreferences}
-                  disabled={savingPreferences}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-xs transition-colors cursor-pointer"
-                >
-                  {savingPreferences ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Save Preferences
-                </button>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { mode: 'light' as ThemeMode, label: t.settings.themeLightLabel, description: t.settings.themeLightDesc, icon: Sun },
+                  { mode: 'dark' as ThemeMode, label: t.settings.themeDarkLabel, description: t.settings.themeDarkDesc, icon: Moon },
+                  { mode: 'system' as ThemeMode, label: t.settings.themeSystemLabel, description: t.settings.themeSystemDesc, icon: Laptop },
+                ].map((option) => {
+                  const Icon = option.icon;
+                  const isSelected = themeMode === option.mode;
+                  return (
+                    <button
+                      key={option.mode}
+                      type="button"
+                      onClick={() => setThemeMode(option.mode)}
+                      className={`flex flex-col items-start p-4 rounded-xl border text-left transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-blue-600 bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-2 ring-blue-500/20'
+                          : 'border-app-border bg-app-input text-app-text hover:bg-app-muted'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full mb-3">
+                        <div className={`p-2 rounded-lg ${isSelected ? 'bg-blue-600 text-white' : 'bg-app-muted text-app-text-muted'}`}>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        {isSelected && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white uppercase tracking-wider">
+                            {t.common.active}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-sm font-semibold text-app-text">{option.label}</span>
+                      <span className="text-xs text-app-text-muted mt-1">{option.description}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </section>
         )}
 
-        {/* ── 4. API KEYS SECTION ───────────────────────────────────────────── */}
-        {activeTab === 'api-keys' && (
-          <section className="space-y-6">
-            {/* Generate Key Form Card */}
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-              <div className="p-6 border-b border-slate-100">
-                <h2 className="text-base font-bold text-slate-900">API Key Management</h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Generate personal API keys to authenticate external scripts, CLI utilities, and automated services with NL2SQL.
-                </p>
-              </div>
-
-              <form onSubmit={handleCreateApiKey} className="p-6">
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="flex-1">
-                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                      Key Label / Purpose
-                    </label>
-                    <input
-                      type="text"
-                      value={newKeyName}
-                      onChange={(e) => setNewKeyName(e.target.value)}
-                      placeholder="e.g. Reporting Bot, Python Analytics Script, CLI Access"
-                      required
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
-                    />
-                  </div>
-                  <div className="sm:self-end">
-                    <button
-                      type="submit"
-                      disabled={creatingKey}
-                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-xs transition-colors cursor-pointer"
-                    >
-                      {creatingKey ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Plus className="w-4 h-4" />
-                      )}
-                      Generate New Key
-                    </button>
-                  </div>
-                </div>
-              </form>
+        {/* ── Language Preferences Tab ─────────────────────────────────────── */}
+        {activeTab === 'language' && (
+          <section className="bg-app-surface border border-app-border rounded-2xl shadow-xs overflow-hidden transition-colors">
+            <div className="p-6 border-b border-app-border">
+              <h2 className="text-base font-bold text-app-text">{t.settings.languageTitle}</h2>
+              <p className="text-xs text-app-text-muted mt-0.5">
+                {t.settings.languageSubtitle}
+              </p>
             </div>
 
-            {/* Newly Created Key Modal / High-visibility Alert */}
-            {createdKeyData && (
-              <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-6 shadow-sm animate-in fade-in zoom-in-95 duration-200">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Shield className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold text-amber-900">
-                        New API Key Created: <span className="underline decoration-amber-400">{createdKeyData.name}</span>
-                      </h3>
-                      <p className="text-xs text-amber-800 mt-1 max-w-2xl leading-relaxed">
-                        <strong>Important:</strong> Please copy this key right now. For security purposes, this key is cryptographically hashed with SHA-256 and will <strong>never be shown again</strong> once you navigate away or close this box.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setCreatedKeyData(null)}
-                    className="text-xs font-semibold px-2.5 py-1 text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 rounded-lg cursor-pointer"
-                  >
-                    Done
-                  </button>
+            <div className="p-6">
+              <div className="flex items-start gap-3 mb-6">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center flex-shrink-0 mt-0.5 text-blue-600 dark:text-blue-400">
+                  <Globe className="w-4 h-4" />
                 </div>
-
-                <div className="mt-4 flex flex-col sm:flex-row items-stretch gap-2 bg-white p-2 rounded-xl border border-amber-200">
-                  <div className="flex-1 font-mono text-sm px-3 py-2 text-slate-900 bg-slate-50 rounded-lg break-all select-all flex items-center">
-                    {createdKeyData.api_key}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyKey(createdKeyData.api_key)}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
-                  >
-                    {copiedKey ? (
-                      <>
-                        <Check className="w-4 h-4 text-emerald-300" />
-                        <span>Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4" />
-                        <span>Copy Key</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* List of Existing API Keys */}
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Your Active API Keys</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Keys associated with your account ({user?.email}).
+                  <h3 className="text-sm font-semibold text-app-text">{t.settings.currentLanguageLabel}</h3>
+                  <p className="text-xs text-app-text-muted mt-0.5">
+                    {language === 'hi' ? t.settings.langHindiName : t.settings.langEnglishName}
                   </p>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* English Option */}
                 <button
                   type="button"
-                  onClick={fetchApiKeys}
-                  disabled={loadingKeys}
-                  className="text-xs text-slate-500 hover:text-blue-600 inline-flex items-center gap-1 cursor-pointer"
+                  onClick={() => handleLanguageChange('en')}
+                  disabled={savingLanguage}
+                  className={`flex flex-col items-start p-5 rounded-2xl border text-left transition-all cursor-pointer ${
+                    language === 'en'
+                      ? 'border-blue-600 bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-2 ring-blue-500/20 shadow-xs'
+                      : 'border-app-border bg-app-input text-app-text hover:bg-app-muted'
+                  }`}
                 >
-                  <Clock className="w-3.5 h-3.5" />
-                  Refresh
+                  <div className="flex items-center justify-between w-full mb-3">
+                    <div className={`p-2 rounded-xl ${language === 'en' ? 'bg-blue-600 text-white' : 'bg-app-muted text-app-text-muted'}`}>
+                      <Globe className="w-5 h-5" />
+                    </div>
+                    {language === 'en' && (
+                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-600 text-white uppercase tracking-wider">
+                        {t.common.active}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-base font-bold text-app-text">{t.settings.langEnglishName}</span>
+                  <span className="text-xs text-app-text-muted mt-1 leading-relaxed">{t.settings.langEnglishDesc}</span>
+                </button>
+
+                {/* Hindi Option */}
+                <button
+                  type="button"
+                  onClick={() => handleLanguageChange('hi')}
+                  disabled={savingLanguage}
+                  className={`flex flex-col items-start p-5 rounded-2xl border text-left transition-all cursor-pointer ${
+                    language === 'hi'
+                      ? 'border-blue-600 bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-2 ring-blue-500/20 shadow-xs'
+                      : 'border-app-border bg-app-input text-app-text hover:bg-app-muted'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full mb-3">
+                    <div className={`p-2 rounded-xl ${language === 'hi' ? 'bg-blue-600 text-white' : 'bg-app-muted text-app-text-muted'}`}>
+                      <Globe className="w-5 h-5" />
+                    </div>
+                    {language === 'hi' && (
+                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-600 text-white uppercase tracking-wider">
+                        {t.common.active}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-base font-bold text-app-text">{t.settings.langHindiName}</span>
+                  <span className="text-xs text-app-text-muted mt-1 leading-relaxed">{t.settings.langHindiDesc}</span>
                 </button>
               </div>
-
-              {loadingKeys ? (
-                <div className="p-12 text-center text-slate-400">
-                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
-                  <p className="text-xs">Loading API keys...</p>
-                </div>
-              ) : apiKeys.length === 0 ? (
-                <div className="p-12 text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 flex items-center justify-center mx-auto mb-3 border border-slate-100">
-                    <KeyRound className="w-6 h-6" />
-                  </div>
-                  <h4 className="text-sm font-semibold text-slate-800">No API keys generated yet</h4>
-                  <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
-                    Use the form above to generate your first API key for scripts and programmatic integrations.
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {apiKeys.map((key) => {
-                    const isRevoking = revokingKeyId === key.id;
-                    return (
-                      <div
-                        key={key.id}
-                        className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-bold text-slate-900">{key.name}</h4>
-                            <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              Active
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3 text-xs text-slate-500">
-                            <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 text-[11px]">
-                              {key.key_prefix}
-                            </span>
-                            <span>•</span>
-                            <span>Created {formatDate(key.created_at)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 self-end sm:self-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRevokeApiKey(key.id, key.name)}
-                            disabled={isRevoking}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                            title="Revoke and permanently delete this API key"
-                          >
-                            {isRevoking ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-3.5 h-3.5" />
-                            )}
-                            Revoke Key
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           </section>
         )}

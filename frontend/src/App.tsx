@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { LanguageProvider } from './context/LanguageContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 // Auth pages (public)
@@ -18,124 +20,124 @@ import { SettingsPage } from './pages/SettingsPage';
 export function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Routes>
+      <ThemeProvider>
+        <AuthProvider>
+          <LanguageProvider>
+            <Routes>
 
-          {/* ── Public Auth Routes ─────────────────────────────────── */}
-          <Route
-            path="/"
-            element={<LoginPage />}
-          />
+              {/* ── Public Auth Routes ─────────────────────────────────── */}
+              <Route
+                path="/"
+                element={<LoginPage />}
+              />
 
-          <Route
-            path="/login"
-            element={<LoginPage />}
-          />
+              <Route
+                path="/login"
+                element={<LoginPage />}
+              />
 
-          <Route
-            path="/register"
-            element={<RegisterPage />}
-          />
+              <Route
+                path="/register"
+                element={<RegisterPage />}
+              />
 
-          <Route
-            path="/forgot-password"
-            element={<ForgotPasswordPage />}
-          />
-
-          <Route
-            path="/reset-password"
-            element={<ForgotPasswordPage />}
-          />
+              <Route
+                path="/forgot-password"
+                element={<ForgotPasswordPage />}
+              />
 
 
-          {/* ── Protected App Routes ───────────────────────────────── */}
+              {/* ── Protected App Routes ───────────────────────────────── */}
 
-          {/* Dashboard */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardPage />
-              </ProtectedRoute>
-            }
-          />
+              {/* Dashboard */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
 
-          {/* Databases */}
-          <Route
-            path="/databases"
-            element={
-              <ProtectedRoute>
-                <ConnectDatabasePage />
-              </ProtectedRoute>
-            }
-          />
+              {/* Connect DB (Screen 2) */}
+              <Route
+                path="/databases/connect"
+                element={
+                  <ProtectedRoute>
+                    <ConnectDatabasePage />
+                  </ProtectedRoute>
+                }
+              />
 
-          {/* AI Assistant */}
-          <Route
-            path="/assistant"
-            element={
-              <ProtectedRoute>
-                <AssistantPage />
-              </ProtectedRoute>
-            }
-          />
+              {/* Indexing / Schema (Screen 3) */}
+              <Route
+                path="/databases/indexing"
+                element={
+                  <ProtectedRoute>
+                    <SchemaIndexingPlaceholderPage />
+                  </ProtectedRoute>
+                }
+              />
 
-          <Route
-            path="/assistant/:connectionId"
-            element={
-              <ProtectedRoute>
-                <AssistantPage />
-              </ProtectedRoute>
-            }
-          />
+              {/* Databases fallback to connect for now */}
+              <Route
+                path="/databases"
+                element={
+                  <ProtectedRoute>
+                    <ConnectDatabasePage />
+                  </ProtectedRoute>
+                }
+              />
 
-          {/* Query History */}
-          <Route
-            path="/history"
-            element={
-              <ProtectedRoute>
-                <QueryHistoryPage />
-              </ProtectedRoute>
-            }
-          />
+              {/* AI Assistant (Screen 4 & 5) */}
+              <Route
+                path="/assistant"
+                element={
+                  <ProtectedRoute>
+                    <AssistantPage />
+                  </ProtectedRoute>
+                }
+              />
 
-          {/* Schema Indexing */}
-          <Route
-            path="/schema-indexing/:connectionId"
-            element={
-              <ProtectedRoute>
-                <SchemaIndexingPlaceholderPage />
-              </ProtectedRoute>
-            }
-          />
+              {/* Query History (Screen 6) */}
+              <Route
+                path="/history"
+                element={
+                  <ProtectedRoute>
+                    <QueryHistoryPage />
+                  </ProtectedRoute>
+                }
+              />
 
-          {/* Settings & Profile */}
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <SettingsPage />
-              </ProtectedRoute>
-            }
-          />
+              {/* Users management */}
+              <Route
+                path="/users"
+                element={
+                  <ProtectedRoute>
+                    <div className="p-8 text-center text-slate-500">
+                      Users module placeholder
+                    </div>
+                  </ProtectedRoute>
+                }
+              />
 
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <SettingsPage />
-              </ProtectedRoute>
-            }
-          />
+              {/* Settings & Profile (Screen 7) */}
+              <Route
+                path="/settings"
+                element={
+                  <ProtectedRoute>
+                    <SettingsPage />
+                  </ProtectedRoute>
+                }
+              />
 
-          {/* Fallback */}
-          <Route
-            path="*"
-            element={<Navigate to="/login" replace />}
-          />
+              {/* Fallback */}
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
 
-        </Routes>
-      </AuthProvider>
+            </Routes>
+          </LanguageProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

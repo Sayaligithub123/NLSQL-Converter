@@ -1,8 +1,50 @@
 @import "tailwindcss";
 
+/* Class-based dark mode so Light/Dark/System can override OS preference. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-muted: #f1f5f9;
+  --app-text: #0f172a;
+  --app-text-muted: #64748b;
+  --app-border: #e2e8f0;
+  --app-input: #ffffff;
+}
+
+html.dark {
+  color-scheme: dark;
+  --app-bg: #020617;
+  --app-surface: #0f172a;
+  --app-muted: #1e293b;
+  --app-text: #f8fafc;
+  --app-text-muted: #94a3b8;
+  --app-border: #1e293b;
+  --app-input: #1e293b;
+}
+
+@theme inline {
+  --color-app-bg: var(--app-bg);
+  --color-app-surface: var(--app-surface);
+  --color-app-muted: var(--app-muted);
+  --color-app-text: var(--app-text);
+  --color-app-text-muted: var(--app-text-muted);
+  --color-app-border: var(--app-border);
+  --color-app-input: var(--app-input);
+}
+
 @layer base {
+  html,
+  body,
+  #root {
+    background-color: var(--app-bg);
+    color: var(--app-text);
+  }
+
   body {
-    @apply antialiased text-slate-900 bg-slate-50 selection:bg-blue-500 selection:text-white;
+    @apply antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }

@@ -1,20 +1,23 @@
 import React from 'react';
 import { AppLayout } from '../components/AppLayout';
 import { DatabaseConnectionForm } from '../components/database/DatabaseConnectionForm';
+import { useLanguage } from '../context/LanguageContext';
 import { Database } from 'lucide-react';
 
 export const ConnectDatabasePage: React.FC = () => {
+  const { t } = useLanguage();
+
   return (
     <AppLayout>
       {/* ── Page Header ─────────────────────────────────────────────── */}
-      <header className="h-16 bg-white border-b border-slate-200 flex items-center px-8 flex-shrink-0 sticky top-0 z-10">
+      <header className="h-16 bg-app-surface border-b border-slate-200 dark:border-slate-800 flex items-center px-8 flex-shrink-0 sticky top-0 z-10 transition-colors">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-            <Database className="w-4 h-4 text-blue-600" />
+          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center">
+            <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-slate-900 leading-tight">Connect Database</h1>
-            <p className="text-xs text-slate-500">Enter connection details and test</p>
+            <h1 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{t.connectDb.pageTitle}</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{t.connectDb.pageSubtitle}</p>
           </div>
         </div>
       </header>

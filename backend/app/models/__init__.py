@@ -6,10 +6,10 @@ from app.models.user import (
     UserResponse,
     Token,
     TokenData,
-    PasswordResetRequest,
-    PasswordResetConfirm,
     GoogleAuthRequest,
     UpdateProfileRequest,
+    UpdateLanguageRequest,
+    UpdateAvatarRequest,
     ChangePasswordRequest,
 )
 
@@ -20,9 +20,9 @@ __all__ = [
     "UserResponse",
     "Token",
     "TokenData",
-    "PasswordResetRequest",
-    "PasswordResetConfirm",
     "GoogleAuthRequest",
     "UpdateProfileRequest",
+    "UpdateLanguageRequest",
+    "UpdateAvatarRequest",
     "ChangePasswordRequest",
 ]

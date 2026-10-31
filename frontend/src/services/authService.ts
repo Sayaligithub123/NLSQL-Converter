@@ -6,6 +6,7 @@ import type {
   GoogleAuthPayload,
   User,
   DbStatusResponse,
+  Language,
 } from '../types/auth';
 
 export const authService = {
@@ -29,8 +30,28 @@ export const authService = {
     return response.data;
   },
 
-  async updateProfile(data: { full_name?: string; role?: string }): Promise<User> {
+  async updateProfile(data: { full_name?: string; language?: Language }): Promise<User> {
     const response = await api.put<User>('/auth/profile', data);
+    return response.data;
+  },
+
+  /**
+   * Update the user's language preference on the backend.
+   */
+  async updateLanguage(language: Language): Promise<User> {
+    const response = await api.put<User>('/auth/language', { language });
+    return response.data;
+  },
+
+  /**
+   * Upload or remove the profile picture for the current user.
+   * @param avatarDataUrl Base64 data URL (e.g. "data:image/png;base64,...").
+   *                      Pass null to remove the current avatar.
+   */
+  async updateAvatar(avatarDataUrl: string | null): Promise<User> {
+    const response = await api.put<User>('/auth/avatar', {
+      avatar_data_url: avatarDataUrl,
+    });
     return response.data;
   },
 
@@ -39,13 +60,11 @@ export const authService = {
     return response.data;
   },
 
-  async forgotPassword(email: string): Promise<{ message: string; reset_token?: string; reset_link?: string }> {
-    const response = await api.post('/auth/forgot-password', { email });
-    return response.data;
-  },
-
-  async resetPassword(token: string, new_password: string): Promise<{ message: string }> {
-    const response = await api.post('/auth/reset-password', { token, new_password });
+  /**
+   * Permanently delete the current user's account.
+   */
+  async deleteAccount(): Promise<{ message: string }> {
+    const response = await api.delete<{ message: string }>('/auth/account');
     return response.data;
   },
 

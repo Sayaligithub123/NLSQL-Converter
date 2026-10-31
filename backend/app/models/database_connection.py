@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Optional, Literal
-from pydantic import BaseModel, Field
+from typing import Annotated, Optional, Literal
+from pydantic import BaseModel, Field, StringConstraints
 
 
 # ── Request Models ──────────────────────────────────────────────────────────
@@ -9,7 +9,10 @@ class DBConnectionRequest(BaseModel):
     db_type: Literal["mysql"] = "mysql"
     host: str = Field(..., min_length=1, max_length=253)
     port: int = Field(..., ge=1, le=65535)
-    database: str = Field(..., min_length=1, max_length=255)
+    database: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=255),
+    ]
     username: str = Field(..., min_length=1, max_length=128)
     password: str = Field(..., min_length=1)
 
